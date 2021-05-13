@@ -37,6 +37,11 @@ from parallel_wavegan.utils import read_hdf5
 matplotlib.use("Agg")
 
 
+def relativistic_loss(y_pred_real, y_pred_fake, label_real):
+    return (torch.mean((y_pred_real - torch.mean(y_pred_fake) - label_real) ** 2) +
+            torch.mean((y_pred_fake - torch.mean(y_pred_real) + label_real) ** 2)) / 2
+
+
 class Trainer(object):
     """Customized trainer module for Parallel WaveGAN training."""
 
@@ -188,39 +193,39 @@ class Trainer(object):
                 "train/sub_spectral_convergence_loss"] += sub_sc_loss.item()
             self.total_train_loss[
                 "train/sub_log_stft_magnitude_loss"] += sub_mag_loss.item()
-            gen_loss += 0.5 * (sub_sc_loss + sub_mag_loss)
+            gen_loss = gen_loss + 0.5 * (sub_sc_loss + sub_mag_loss)
 
         # adversarial loss
         if self.steps > self.config["discriminator_train_start_steps"]:
+            p = self.model["discriminator"](y)
             p_ = self.model["discriminator"](y_)
             if not isinstance(p_, list):
                 # for standard discriminator
-                adv_loss = self.criterion["mse"](p_, p_.new_ones(p_.size()))
+                adv_loss = relativistic_loss(p.detach(), p_, -1)
                 self.total_train_loss["train/adversarial_loss"] += adv_loss.item()
             else:
                 # for multi-scale discriminator
                 adv_loss = 0.0
                 for i in range(len(p_)):
-                    adv_loss += self.criterion["mse"](
-                        p_[i][-1], p_[i][-1].new_ones(p_[i][-1].size()))
+                    adv_loss = adv_loss + relativistic_loss(p[i][-1].detach(), p_[i][-1], -1)
                 adv_loss /= (i + 1)
                 self.total_train_loss["train/adversarial_loss"] += adv_loss.item()
 
                 # feature matching loss
                 if self.config["use_feat_match_loss"]:
                     # no need to track gradients
-                    with torch.no_grad():
-                        p = self.model["discriminator"](y)
+                    # with torch.no_grad():
+                    #     p = self.model["discriminator"](y)
                     fm_loss = 0.0
                     for i in range(len(p_)):
                         for j in range(len(p_[i]) - 1):
-                            fm_loss += self.criterion["l1"](p_[i][j], p[i][j].detach())
+                            fm_loss = fm_loss + self.criterion["l1"](p_[i][j], p[i][j].detach())
                     fm_loss /= (i + 1) * (j + 1)
                     self.total_train_loss["train/feature_matching_loss"] += fm_loss.item()
-                    adv_loss += self.config["lambda_feat_match"] * fm_loss
+                    adv_loss = adv_loss + self.config["lambda_feat_match"] * fm_loss
 
             # add adversarial loss to generator loss
-            gen_loss += self.config["lambda_adv"] * adv_loss
+            gen_loss = gen_loss + self.config["lambda_adv"] * adv_loss
 
         self.total_train_loss["train/generator_loss"] += gen_loss.item()
 
@@ -239,34 +244,24 @@ class Trainer(object):
         #######################
         if self.steps > self.config["discriminator_train_start_steps"]:
             # re-compute y_ which leads better quality
-            with torch.no_grad():
-                y_ = self.model["generator"](*x)
-            if self.config["generator_params"]["out_channels"] > 1:
-                y_ = self.criterion["pqmf"].synthesis(y_)
+            # with torch.no_grad():
+            #     y_ = self.model["generator"](*x)
+            # if self.config["generator_params"]["out_channels"] > 1:
+            #     y_ = self.criterion["pqmf"].synthesis(y_)
 
             # discriminator loss
-            p = self.model["discriminator"](y)
+            # p = self.model["discriminator"](y)
             p_ = self.model["discriminator"](y_.detach())
             if not isinstance(p, list):
                 # for standard discriminator
-                real_loss = self.criterion["mse"](p, p.new_ones(p.size()))
-                fake_loss = self.criterion["mse"](p_, p_.new_zeros(p_.size()))
-                dis_loss = real_loss + fake_loss
+                dis_loss = relativistic_loss(p, p_, 1)
             else:
                 # for multi-scale discriminator
-                real_loss = 0.0
-                fake_loss = 0.0
-                for i in range(len(p)):
-                    real_loss += self.criterion["mse"](
-                        p[i][-1], p[i][-1].new_ones(p[i][-1].size()))
-                    fake_loss += self.criterion["mse"](
-                        p_[i][-1], p_[i][-1].new_zeros(p_[i][-1].size()))
-                real_loss /= (i + 1)
-                fake_loss /= (i + 1)
-                dis_loss = real_loss + fake_loss
+                dis_loss = 0.0
+                for i in range(len(p_)):
+                    dis_loss = dis_loss + relativistic_loss(p[i][-1], p_[i][-1], 1)
+                dis_loss /= (i + 1)
 
-            self.total_train_loss["train/real_loss"] += real_loss.item()
-            self.total_train_loss["train/fake_loss"] += fake_loss.item()
             self.total_train_loss["train/discriminator_loss"] += dis_loss.item()
 
             # update discriminator
@@ -709,8 +704,8 @@ def main():
     if args.train_wav_scp is None or args.dev_wav_scp is None:
         if config["format"] == "hdf5":
             audio_query, mel_query = "*.h5", "*.h5"
-            audio_load_fn = lambda x: read_hdf5(x, "wave")  # NOQA
-            mel_load_fn = lambda x: read_hdf5(x, "feats")  # NOQA
+            def audio_load_fn(x): return read_hdf5(x, "wave")  # NOQA
+            def mel_load_fn(x): return read_hdf5(x, "feats")  # NOQA
         elif config["format"] == "npy":
             audio_query, mel_query = "*-wave.npy", "*-feats.npy"
             audio_load_fn = np.load
