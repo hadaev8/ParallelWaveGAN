@@ -23,6 +23,8 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from torch_ema import ExponentialMovingAverage
+
 import parallel_wavegan
 import parallel_wavegan.models
 import parallel_wavegan.optimizers
@@ -238,6 +240,7 @@ class Trainer(object):
                 self.config["generator_grad_norm"])
         self.optimizer["generator"].step()
         self.scheduler["generator"].step()
+        self.model["ema"].update(self.model["generator"].parameters())
 
         #######################
         #    Discriminator    #
@@ -401,8 +404,26 @@ class Trainer(object):
             if eval_steps_per_epoch == 1:
                 self._genearete_and_save_intermediate_result(batch)
 
-        logging.info(f"(Steps: {self.steps}) Finished evaluation "
-                     f"({eval_steps_per_epoch} steps per epoch).")
+        # average loss
+        for key in self.total_eval_loss.keys():
+            self.total_eval_loss[key] /= eval_steps_per_epoch
+            logging.info(f"(Steps: {self.steps}) {key} = {self.total_eval_loss[key]:.4f}.")
+
+        # record
+        self._write_to_tensorboard(self.total_eval_loss)
+
+        # reset
+        self.total_eval_loss = defaultdict(float)
+
+        with self.model["ema"].average_parameters():
+            # calculate loss for each batch
+            for eval_steps_per_epoch, batch in enumerate(tqdm(self.data_loader["dev"], desc="[eval]"), 1):
+                # eval one step
+                self._eval_step(batch)
+
+        for key in self.total_eval_loss.keys():
+            self.total_eval_loss[key + 'ema'] = self.total_eval_loss[key]
+            del self.total_eval_loss[key]
 
         # average loss
         for key in self.total_eval_loss.keys():
@@ -433,14 +454,19 @@ class Trainer(object):
         if self.config["generator_params"]["out_channels"] > 1:
             y_batch_ = self.criterion["pqmf"].synthesis(y_batch_)
 
+        with self.model["ema"].average_parameters():
+            y_batch_ema = self.model["generator"](*x_batch)
+            if self.config["generator_params"]["out_channels"] > 1:
+                y_batch_ema = self.criterion["pqmf"].synthesis(y_batch_ema)
+
         # check directory
         dirname = os.path.join(self.config["outdir"], f"predictions/{self.steps}steps")
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        for idx, (y, y_) in enumerate(zip(y_batch, y_batch_), 1):
+        for idx, (y, y_, y_ema) in enumerate(zip(y_batch, y_batch_, y_batch_ema), 1):
             # convert to ndarray
-            y, y_ = y.view(-1).cpu().numpy(), y_.view(-1).cpu().numpy()
+            y, y_, y_ema = y.view(-1).cpu().numpy(), y_.view(-1).cpu().numpy(), y_ema.view(-1).cpu().numpy()
 
             # plot figure and save it
             figname = os.path.join(dirname, f"{idx}.png")
@@ -450,6 +476,9 @@ class Trainer(object):
             plt.subplot(2, 1, 2)
             plt.plot(y_)
             plt.title(f"generated speech @ {self.steps} steps")
+            plt.subplot(2, 1, 3)
+            plt.plot(y_ema)
+            plt.title(f"generated speech ema @ {self.steps} steps")
             plt.tight_layout()
             plt.savefig(figname)
             plt.close()
@@ -457,9 +486,12 @@ class Trainer(object):
             # save as wavfile
             y = np.clip(y, -1, 1)
             y_ = np.clip(y_, -1, 1)
+            y_ema = np.clip(y_, -1, 1)
             sf.write(figname.replace(".png", "_ref.wav"), y,
                      self.config["sampling_rate"], "PCM_16")
             sf.write(figname.replace(".png", "_gen.wav"), y_,
+                     self.config["sampling_rate"], "PCM_16")
+            sf.write(figname.replace(".png", "_gen_ema.wav"), y_ema,
                      self.config["sampling_rate"], "PCM_16")
 
             if idx >= self.config["num_save_intermediate_results"]:
@@ -806,6 +838,7 @@ def main():
         "discriminator": discriminator_class(
             **config["discriminator_params"]).to(device),
     }
+    model['ema'] = ExponentialMovingAverage(model["generator"].parameters(), decay=0.995)
     criterion = {
         "stft": MultiResolutionSTFTLoss(
             **config["stft_loss_params"]).to(device),
