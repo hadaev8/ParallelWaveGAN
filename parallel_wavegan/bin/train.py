@@ -134,6 +134,9 @@ class Trainer(object):
                 "discriminator": self.model["discriminator"].state_dict(),
             }
 
+        with self.model["ema"].average_parameters():
+            state_dict["model"]["generator_ema"] = self.optimizer["generator"].state_dict()
+
         if not os.path.exists(os.path.dirname(checkpoint_path)):
             os.makedirs(os.path.dirname(checkpoint_path))
         torch.save(state_dict, checkpoint_path)
@@ -240,7 +243,7 @@ class Trainer(object):
                 self.config["generator_grad_norm"])
         self.optimizer["generator"].step()
         self.scheduler["generator"].step()
-        self.model["ema"].update(self.model["generator"].parameters())
+        self.model["ema"].update()
 
         #######################
         #    Discriminator    #
