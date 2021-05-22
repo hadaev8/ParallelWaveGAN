@@ -474,13 +474,13 @@ class Trainer(object):
 
             # plot figure and save it
             figname = os.path.join(dirname, f"{idx}.png")
-            plt.subplot(2, 1, 1)
+            plt.subplot(3, 1, 1)
             plt.plot(y)
             plt.title("groundtruth speech")
-            plt.subplot(2, 1, 2)
+            plt.subplot(3, 1, 2)
             plt.plot(y_)
             plt.title(f"generated speech @ {self.steps} steps")
-            plt.subplot(2, 1, 3)
+            plt.subplot(3, 1, 3)
             plt.plot(y_ema)
             plt.title(f"generated speech ema @ {self.steps} steps")
             plt.tight_layout()
