@@ -87,6 +87,7 @@ class Trainer(object):
         self.finish_train = False
         self.total_train_loss = defaultdict(float)
         self.total_eval_loss = defaultdict(float)
+        self.ema = ExponentialMovingAverage(model["generator"].parameters(), decay=0.995)
 
     def run(self):
         """Run training."""
@@ -134,7 +135,7 @@ class Trainer(object):
                 "discriminator": self.model["discriminator"].state_dict(),
             }
 
-        with self.model["ema"].average_parameters():
+        with self.ema.average_parameters():
             state_dict["model"]["generator_ema"] = self.optimizer["generator"].state_dict()
 
         if not os.path.exists(os.path.dirname(checkpoint_path)):
@@ -243,7 +244,7 @@ class Trainer(object):
                 self.config["generator_grad_norm"])
         self.optimizer["generator"].step()
         self.scheduler["generator"].step()
-        self.model["ema"].update()
+        self.ema.update()
 
         #######################
         #    Discriminator    #
@@ -418,7 +419,7 @@ class Trainer(object):
         # reset
         self.total_eval_loss = defaultdict(float)
 
-        with self.model["ema"].average_parameters():
+        with self.ema.average_parameters():
             # calculate loss for each batch
             for eval_steps_per_epoch, batch in enumerate(tqdm(self.data_loader["dev"], desc="[eval]"), 1):
                 # eval one step
@@ -457,7 +458,7 @@ class Trainer(object):
         if self.config["generator_params"]["out_channels"] > 1:
             y_batch_ = self.criterion["pqmf"].synthesis(y_batch_)
 
-        with self.model["ema"].average_parameters():
+        with self.ema.average_parameters():
             y_batch_ema = self.model["generator"](*x_batch)
             if self.config["generator_params"]["out_channels"] > 1:
                 y_batch_ema = self.criterion["pqmf"].synthesis(y_batch_ema)
@@ -841,7 +842,6 @@ def main():
         "discriminator": discriminator_class(
             **config["discriminator_params"]).to(device),
     }
-    model['ema'] = ExponentialMovingAverage(model["generator"].parameters(), decay=0.995)
     criterion = {
         "stft": MultiResolutionSTFTLoss(
             **config["stft_loss_params"]).to(device),
