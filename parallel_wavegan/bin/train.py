@@ -185,7 +185,7 @@ class Trainer(object):
         gen_loss = 0.0
 
         # multi-resolution sfft loss
-        if "stft" in self.criterion.keys():
+        if self.config.get("use_stft_loss", True):
             sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
             self.total_train_loss["train/spectral_convergence_loss"] += sc_loss.item()
             self.total_train_loss["train/log_stft_magnitude_loss"] += mag_loss.item()
@@ -203,6 +203,11 @@ class Trainer(object):
             self.total_train_loss[
                 "train/sub_log_stft_magnitude_loss"] += sub_mag_loss.item()
             gen_loss = gen_loss + 0.5 * (sub_sc_loss + sub_mag_loss)
+
+        if self.config.get("use_feat_match_loss_wav2vec", False):
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](y_), self.criterion["wav2vec"](y))
+            gen_loss = gen_loss + wav2vec_loss
+            self.total_train_loss["train/wav2vec_loss"] += wav2vec_loss.item()
 
         # adversarial loss
         if self.steps > self.config["discriminator_train_start_steps"]:
@@ -334,7 +339,7 @@ class Trainer(object):
         aux_loss = 0.0
 
         # multi-resolution sfft loss
-        if "stft" in self.criterion.keys():
+        if self.config.get("use_stft_loss", True):
             sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
             self.total_eval_loss["eval/spectral_convergence_loss"] += sc_loss.item()
             self.total_eval_loss["eval/log_stft_magnitude_loss"] += mag_loss.item()
@@ -352,6 +357,11 @@ class Trainer(object):
             self.total_eval_loss[
                 "eval/sub_log_stft_magnitude_loss"] += sub_mag_loss.item()
             aux_loss += 0.5 * (sub_sc_loss + sub_mag_loss)
+
+        if self.config.get("use_feat_match_loss_wav2vec", False):
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](y_), self.criterion["wav2vec"](y))
+            aux_loss = aux_loss + wav2vec_loss
+            self.total_eval_loss["eval/wav2vec_loss"] += wav2vec_loss.item()
 
         # adversarial loss
         p = self.model["discriminator"](y)
@@ -432,7 +442,7 @@ class Trainer(object):
                 self._eval_step(batch)
 
         for key in self.total_eval_loss.keys():
-            self.total_eval_loss[key + 'ema'] = self.total_eval_loss[key]
+            self.total_eval_loss[key + '_ema'] = self.total_eval_loss[key]
             del self.total_eval_loss[key]
 
         # average loss
@@ -849,12 +859,20 @@ def main():
             **config["discriminator_params"]).to(device),
     }
     criterion = {
-        "mse": torch.nn.MSELoss().to(device),
+        "mse": torch.nn.MSELoss(),
     }
     if config.get("use_stft_loss", True):  # keep compatibility
         criterion["stft"] = MultiResolutionSTFTLoss(**config["stft_loss_params"]).to(device)
     if config.get("use_feat_match_loss", False):  # keep compatibility
-        criterion["l1"] = torch.nn.L1Loss().to(device)
+        criterion["l1"] = torch.nn.L1Loss()
+    if config.get("use_feat_match_loss_wav2vec", False):  # keep compatibility
+        from transformers import Wav2Vec2ForCTC
+        wav2vec = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h").wav2vec2.feature_extractor
+        wav2vec.eval()
+        for p in wav2vec.parameters():
+            p.requires_grad = False
+        criterion["wav2vec"] = wav2vec.to(device)
+        criterion["l1"] = torch.nn.L1Loss()
     if config["generator_params"]["out_channels"] > 1:
         criterion["pqmf"] = PQMF(
             subbands=config["generator_params"]["out_channels"],
