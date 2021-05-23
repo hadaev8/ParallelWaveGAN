@@ -336,6 +336,8 @@ class Trainer(object):
         # multi-resolution sfft loss
         if "stft" in self.criterion.keys():
             sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
+            self.total_eval_loss["eval/spectral_convergence_loss"] += sc_loss.item()
+            self.total_eval_loss["eval/log_stft_magnitude_loss"] += mag_loss.item()
             aux_loss = aux_loss + sc_loss + mag_loss
 
         # subband multi-resolution stft loss
@@ -393,8 +395,6 @@ class Trainer(object):
 
         # add to total eval loss
         self.total_eval_loss["eval/adversarial_loss"] += adv_loss.item()
-        self.total_eval_loss["eval/spectral_convergence_loss"] += sc_loss.item()
-        self.total_eval_loss["eval/log_stft_magnitude_loss"] += mag_loss.item()
         self.total_eval_loss["eval/generator_loss"] += gen_loss.item()
         self.total_eval_loss["eval/discriminator_loss"] += dis_loss.item()
 
