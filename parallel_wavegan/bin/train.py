@@ -182,11 +182,14 @@ class Trainer(object):
             y_mb_ = y_
             y_ = self.criterion["pqmf"].synthesis(y_mb_)
 
+        gen_loss = 0.0
+
         # multi-resolution sfft loss
-        sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
-        self.total_train_loss["train/spectral_convergence_loss"] += sc_loss.item()
-        self.total_train_loss["train/log_stft_magnitude_loss"] += mag_loss.item()
-        gen_loss = sc_loss + mag_loss
+        if "stft" in self.criterion.keys():
+            sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
+            self.total_train_loss["train/spectral_convergence_loss"] += sc_loss.item()
+            self.total_train_loss["train/log_stft_magnitude_loss"] += mag_loss.item()
+            gen_loss = gen_loss + sc_loss + mag_loss
 
         # subband multi-resolution stft loss
         if self.config.get("use_subband_stft_loss", False):
@@ -328,9 +331,12 @@ class Trainer(object):
             y_mb_ = y_
             y_ = self.criterion["pqmf"].synthesis(y_mb_)
 
-        # multi-resolution stft loss
-        sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
-        aux_loss = sc_loss + mag_loss
+        aux_loss = 0.0
+
+        # multi-resolution sfft loss
+        if "stft" in self.criterion.keys():
+            sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
+            aux_loss = aux_loss + sc_loss + mag_loss
 
         # subband multi-resolution stft loss
         if self.config.get("use_subband_stft_loss", False):
@@ -843,10 +849,10 @@ def main():
             **config["discriminator_params"]).to(device),
     }
     criterion = {
-        "stft": MultiResolutionSTFTLoss(
-            **config["stft_loss_params"]).to(device),
         "mse": torch.nn.MSELoss().to(device),
     }
+    if config.get("use_stft_loss", True):  # keep compatibility
+        criterion["stft"] = MultiResolutionSTFTLoss(**config["stft_loss_params"]).to(device)
     if config.get("use_feat_match_loss", False):  # keep compatibility
         criterion["l1"] = torch.nn.L1Loss().to(device)
     if config["generator_params"]["out_channels"] > 1:
