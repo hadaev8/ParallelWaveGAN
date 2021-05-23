@@ -205,7 +205,8 @@ class Trainer(object):
             gen_loss = gen_loss + 0.5 * (sub_sc_loss + sub_mag_loss)
 
         if self.config.get("use_feat_match_loss_wav2vec", False):
-            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](y_), self.criterion["wav2vec"](y))
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](
+                y_.squeeze(1)), self.criterion["wav2vec"](y.squeeze(1)))
             gen_loss = gen_loss + wav2vec_loss
             self.total_train_loss["train/wav2vec_loss"] += wav2vec_loss.item()
 
@@ -359,7 +360,8 @@ class Trainer(object):
             aux_loss += 0.5 * (sub_sc_loss + sub_mag_loss)
 
         if self.config.get("use_feat_match_loss_wav2vec", False):
-            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](y_), self.criterion["wav2vec"](y))
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](
+                y_.squeeze(1)), self.criterion["wav2vec"](y.squeeze(1)))
             aux_loss = aux_loss + wav2vec_loss
             self.total_eval_loss["eval/wav2vec_loss"] += wav2vec_loss.item()
 
