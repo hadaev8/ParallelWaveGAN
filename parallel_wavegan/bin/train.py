@@ -190,6 +190,12 @@ class Trainer(object):
                 "train/sub_log_stft_magnitude_loss"] += sub_mag_loss.item()
             gen_loss += 0.5 * (sub_sc_loss + sub_mag_loss)
 
+        if self.config.get("use_feat_match_loss_wav2vec", False):
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](
+                y_.squeeze(1)), self.criterion["wav2vec"](y.squeeze(1)))
+        gen_loss = gen_loss + wav2vec_loss
+        self.total_train_loss["train/wav2vec_loss"] += wav2vec_loss.item()
+
         # adversarial loss
         if self.steps > self.config["discriminator_train_start_steps"]:
             p_ = self.model["discriminator"](y_)
@@ -342,6 +348,12 @@ class Trainer(object):
             self.total_eval_loss[
                 "eval/sub_log_stft_magnitude_loss"] += sub_mag_loss.item()
             aux_loss += 0.5 * (sub_sc_loss + sub_mag_loss)
+
+        if self.config.get("use_feat_match_loss_wav2vec", False):
+            wav2vec_loss = self.criterion["l1"](self.criterion["wav2vec"](
+                y_.squeeze(1)), self.criterion["wav2vec"](y.squeeze(1)))
+        gen_loss = aux_loss + wav2vec_loss
+        self.total_train_loss["eval/wav2vec_loss"] += wav2vec_loss.item()
 
         # adversarial loss
         p_ = self.model["discriminator"](y_)
@@ -709,8 +721,8 @@ def main():
     if args.train_wav_scp is None or args.dev_wav_scp is None:
         if config["format"] == "hdf5":
             audio_query, mel_query = "*.h5", "*.h5"
-            audio_load_fn = lambda x: read_hdf5(x, "wave")  # NOQA
-            mel_load_fn = lambda x: read_hdf5(x, "feats")  # NOQA
+            def audio_load_fn(x): return read_hdf5(x, "wave")  # NOQA
+            def mel_load_fn(x): return read_hdf5(x, "feats")  # NOQA
         elif config["format"] == "npy":
             audio_query, mel_query = "*-wave.npy", "*-feats.npy"
             audio_load_fn = np.load
@@ -831,6 +843,14 @@ def main():
     }
     if config.get("use_feat_match_loss", False):  # keep compatibility
         criterion["l1"] = torch.nn.L1Loss().to(device)
+    if config.get("use_feat_match_loss_wav2vec", False):  # keep compatibility
+        from transformers import Wav2Vec2ForCTC
+        wav2vec = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-xlsr-53").wav2vec2.feature_extractor
+        wav2vec.eval()
+        for p in wav2vec.parameters():
+            p.requires_grad = False
+        criterion["wav2vec"] = wav2vec.to(device)
+        criterion["l1"] = torch.nn.L1Loss()
     if config["generator_params"]["out_channels"] > 1:
         criterion["pqmf"] = PQMF(
             subbands=config["generator_params"]["out_channels"],
