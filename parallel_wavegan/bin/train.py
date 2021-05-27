@@ -208,7 +208,7 @@ class Trainer(object):
                 adv_loss = 0.0
                 for i in range(len(p_)):
                     adv_loss += relativistic_loss(
-                        p.detach()[i][-1], p_[i][-1], -1)
+                        p[i][-1].detach(), p_[i][-1], -1)
                 adv_loss /= (i + 1)
                 self.total_train_loss["train/adversarial_loss"] += adv_loss.item()
 
