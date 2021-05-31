@@ -18,6 +18,8 @@ import numpy as np
 import soundfile as sf
 import torch
 import yaml
+import auraloss
+
 
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
@@ -172,10 +174,9 @@ class Trainer(object):
             y_ = self.criterion["pqmf"].synthesis(y_mb_)
 
         # multi-resolution sfft loss
-        sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
-        self.total_train_loss["train/spectral_convergence_loss"] += sc_loss.item()
-        self.total_train_loss["train/log_stft_magnitude_loss"] += mag_loss.item()
-        gen_loss = sc_loss + mag_loss
+        stft_loss = self.criterion["stft"](y_, y)
+        self.total_train_loss["train/stft_loss"] += stft_loss.item()
+        gen_loss = stft_loss
 
         # subband multi-resolution stft loss
         if self.config.get("use_subband_stft_loss", False):
@@ -327,8 +328,9 @@ class Trainer(object):
             y_ = self.criterion["pqmf"].synthesis(y_mb_)
 
         # multi-resolution stft loss
-        sc_loss, mag_loss = self.criterion["stft"](y_.squeeze(1), y.squeeze(1))
-        aux_loss = sc_loss + mag_loss
+        stft_loss = self.criterion["stft"](y_, y)
+        self.total_train_loss["train/stft_loss"] += stft_loss.item()
+        aux_loss = stft_loss
 
         # subband multi-resolution stft loss
         if self.config.get("use_subband_stft_loss", False):
@@ -709,8 +711,8 @@ def main():
     if args.train_wav_scp is None or args.dev_wav_scp is None:
         if config["format"] == "hdf5":
             audio_query, mel_query = "*.h5", "*.h5"
-            audio_load_fn = lambda x: read_hdf5(x, "wave")  # NOQA
-            mel_load_fn = lambda x: read_hdf5(x, "feats")  # NOQA
+            def audio_load_fn(x): return read_hdf5(x, "wave")  # NOQA
+            def mel_load_fn(x): return read_hdf5(x, "feats")  # NOQA
         elif config["format"] == "npy":
             audio_query, mel_query = "*-wave.npy", "*-feats.npy"
             audio_load_fn = np.load
@@ -825,8 +827,10 @@ def main():
             **config["discriminator_params"]).to(device),
     }
     criterion = {
-        "stft": MultiResolutionSTFTLoss(
-            **config["stft_loss_params"]).to(device),
+        "stft": auraloss.freq.MultiResolutionSTFTLoss(scale="mel",
+                                                      n_bins=128,
+                                                      sample_rate=22050,
+                                                      device=device),
         "mse": torch.nn.MSELoss().to(device),
     }
     if config.get("use_feat_match_loss", False):  # keep compatibility
