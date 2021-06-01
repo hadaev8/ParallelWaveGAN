@@ -825,10 +825,11 @@ def main():
             **config["discriminator_params"]).to(device),
     }
     criterion = {
-        "stft": auraloss.freq.MultiResolutionSTFTLoss(scale="mel",
-                                                      n_bins=128,
-                                                      sample_rate=22050,
-                                                      device=device),
+        "stft": auraloss.freq.RandomResolutionSTFTLoss(max_fft_size=config["batch_max_steps"],
+                                                       scale="mel",
+                                                       n_mels=128,
+                                                       sample_rate=22050,
+                                                       device=device),
         "mse": torch.nn.MSELoss().to(device),
     }
     if config.get("use_feat_match_loss", False):  # keep compatibility
