@@ -825,10 +825,11 @@ def main():
             **config["discriminator_params"]).to(device),
     }
     criterion = {
-        "stft": auraloss.freq.RandomResolutionSTFTLoss(max_fft_size=config["batch_max_steps"],
+        "stft": auraloss.freq.RandomResolutionSTFTLoss(max_fft_size=config["batch_max_steps"] / 2,
+                                                       min_fft_size=config["num_mels"] * 2,
                                                        scale="mel",
-                                                       n_mels=128,
-                                                       sample_rate=22050,
+                                                       n_mels=config["num_mels"],
+                                                       sample_rate=config["sampling_rate"],
                                                        device=device),
         "mse": torch.nn.MSELoss().to(device),
     }
