@@ -827,7 +827,7 @@ def main():
     criterion = {
         "stft": auraloss.freq.RandomResolutionSTFTLoss(max_fft_size=config["batch_max_steps"] / 2,
                                                        min_fft_size=config["num_mels"] * 2,
-                                                       scale="mel",
+                                                       scale=None,
                                                        n_mels=config["num_mels"],
                                                        sample_rate=config["sampling_rate"],
                                                        device=device),
