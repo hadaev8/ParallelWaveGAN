@@ -501,6 +501,7 @@ class MelGANSpecDiscriminator(torch.nn.Module):
             self.apply_weight_norm()
 
     def forward(self, x):
+        x = x.squeeze(1)
         x = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
         x = x.transpose(1, 2).unsqueeze(1)
         for conv in self.conv_layers:
