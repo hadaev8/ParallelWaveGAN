@@ -9,6 +9,8 @@ import logging
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+from ..losses import stft
 
 from parallel_wavegan.layers import CausalConv1d
 from parallel_wavegan.layers import CausalConvTranspose1d
@@ -445,3 +447,87 @@ class MelGANMultiScaleDiscriminator(torch.nn.Module):
                 logging.debug(f"Reset parameters in {m}.")
 
         self.apply(_reset_parameters)
+
+
+class MelGANSpecDiscriminator(torch.nn.Module):
+    """MelGAN discriminator module."""
+
+    def __init__(self,
+                 fft_size, shift_size, win_length, window="hann_window",
+                 nonlinear_activation="LeakyReLU",
+                 nonlinear_activation_params={"negative_slope": 0.2},
+                 use_weight_norm=True,
+                 ):
+        super(MelGANDiscriminator, self).__init__()
+
+        self.fft_size = fft_size
+        self.shift_size = shift_size
+        self.win_length = win_length
+        self.register_buffer("window", getattr(torch, window)(win_length))
+
+        self.conv_layers = torch.nn.ModuleList()
+
+        # add first layer
+        self.conv_layers += [
+            torch.nn.Sequential(
+                torch.nn.Conv2d(1, 32, 3, padding=1),
+                getattr(torch.nn, nonlinear_activation)(**nonlinear_activation_params),
+            )
+        ]
+
+        for _ in range(3):
+            self.conv_layers += [
+                torch.nn.Sequential(
+                    torch.nn.Conv2d(1, 32, 9, stride=(1, 2), padding=4),
+                    getattr(torch.nn, nonlinear_activation)(**nonlinear_activation_params),
+                )
+            ]
+
+        # add final layers
+        self.conv_layers += [
+            torch.nn.Sequential(
+                torch.nn.Conv2d(32, 32, 3, padding=1),
+                getattr(torch.nn, nonlinear_activation)(**nonlinear_activation_params),
+                torch.nn.Conv2d(32, 1, 3, padding=1)
+            )
+        ]
+
+        feature_channels = fft_size // 2 + 1
+        self.seqpool = torch.nn.Conv1d(feature_channels, 1, 3, padding=1)
+        self.out = torch.nn.Linear(feature_channels, 1)
+
+        # apply weight norm
+        if use_weight_norm:
+            self.apply_weight_norm()
+
+    def forward(self, x):
+        x = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
+        x = x.transpose(1, 2).unsqueeze(1)
+        for conv in self.conv_layers:
+            x = conv(x)
+        x = x.squeeze(1)
+        x = torch.matmul(F.softmax(self.seqpool(x), dim=-1), x.transpose(-1, -2)).squeeze(-2)
+        x = self.out(x).squeeze(-1)
+        return x
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Conv2d):
+                torch.nn.utils.weight_norm(m)
+                logging.debug(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+
+class UniversalDiscriminator(torch.nn.Module):
+    def __init__(self, d, fft_size, shift_size, win_length, window):
+        self.d = d
+        self.d_stft = torch.nn.ModuleList([MelGANSpecDiscriminator(x, y, z, window)
+                                           for (x, y, z) in zip(fft_size, shift_size, win_length)])
+
+    def forward(self, x):
+        out_d = self.d(x)
+        out_stft = torch.stack([d(x) for d in self.d_stft], axis=0).mean(0)
+
+        return out_d, out_stft

@@ -27,17 +27,16 @@ def stft(x, fft_size, hop_size, win_length, window):
         Tensor: Magnitude spectrogram (B, #frames, fft_size // 2 + 1).
 
     """
-    if is_pytorch_17plus:
-        x_stft = torch.stft(
-            x, fft_size, hop_size, win_length, window, return_complex=False
-        )
-    else:
-        x_stft = torch.stft(x, fft_size, hop_size, win_length, window)
-    real = x_stft[..., 0]
-    imag = x_stft[..., 1]
+    x_stft = torch.stft(
+        x,
+        fft_size,
+        hop_size,
+        win_length,
+        window,
+        return_complex=True,
+    )
 
-    # NOTE(kan-bayashi): clamp is needed to avoid nan or inf
-    return torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7)).transpose(2, 1)
+    return torch.sqrt(torch.clamp((x_stft.real ** 2) + (x_stft.imag ** 2), min=1e-7)).transpose(1, 2)
 
 
 class SpectralConvergenceLoss(torch.nn.Module):
