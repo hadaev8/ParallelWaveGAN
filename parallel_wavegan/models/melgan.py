@@ -458,7 +458,7 @@ class MelGANSpecDiscriminator(torch.nn.Module):
                  nonlinear_activation_params={"negative_slope": 0.2},
                  use_weight_norm=True,
                  ):
-        super(MelGANDiscriminator, self).__init__()
+        super(MelGANSpecDiscriminator, self).__init__()
 
         self.fft_size = fft_size
         self.shift_size = shift_size
