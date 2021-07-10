@@ -373,7 +373,7 @@ class Trainer(object):
                 self.total_eval_loss["eval/feature_matching_loss"] += fm_loss.item()
                 aux_loss += self.config["lambda_adv"] * self.config["lambda_feat_match"] * fm_loss
 
-        adv_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_ones(i.size()))
+        adv_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_ones(p_stft_.size()))
         adv_loss = (adv_loss + adv_loss_stft) / 2
         gen_loss = aux_loss + self.config["lambda_adv"] * adv_loss
 
