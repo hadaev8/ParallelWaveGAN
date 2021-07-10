@@ -522,6 +522,7 @@ class MelGANSpecDiscriminator(torch.nn.Module):
 
 class MelGANUniversalDiscriminator(torch.nn.Module):
     def __init__(self, d, fft_size, shift_size, win_length, window):
+        super(MelGANUniversalDiscriminator, self).__init__()
         self.d = d
         self.d_stft = torch.nn.ModuleList([MelGANSpecDiscriminator(x, y, z, window)
                                            for (x, y, z) in zip(fft_size, shift_size, win_length)])
