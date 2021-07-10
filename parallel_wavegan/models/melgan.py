@@ -478,7 +478,7 @@ class MelGANSpecDiscriminator(torch.nn.Module):
         for _ in range(3):
             self.conv_layers += [
                 torch.nn.Sequential(
-                    torch.nn.Conv2d(1, 32, 9, stride=(1, 2), padding=4),
+                    torch.nn.Conv2d(32, 32, 9, stride=(1, 2), padding=4),
                     getattr(torch.nn, nonlinear_activation)(**nonlinear_activation_params),
                 )
             ]
