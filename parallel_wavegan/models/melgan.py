@@ -520,7 +520,7 @@ class MelGANSpecDiscriminator(torch.nn.Module):
         self.apply(_apply_weight_norm)
 
 
-class UniversalDiscriminator(torch.nn.Module):
+class MelGANUniversalDiscriminator(torch.nn.Module):
     def __init__(self, d, fft_size, shift_size, win_length, window):
         self.d = d
         self.d_stft = torch.nn.ModuleList([MelGANSpecDiscriminator(x, y, z, window)

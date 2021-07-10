@@ -832,10 +832,11 @@ def main():
         # keep compatibility
         config.get("discriminator_type", "ParallelWaveGANDiscriminator"),
     )
+    base_discriminator = discriminator_class(**config["discriminator_params"])
     model = {
         "generator": generator_class(
             **config["generator_params"]).to(device),
-        "discriminator": parallel_wavegan.models.UniversalDiscriminator(discriminator_class(**config["discriminator_params"]), **config["stft_universal_params"]).to(device),
+        "discriminator": parallel_wavegan.models.MelGANUniversalDiscriminator(base_discriminator, **config["stft_universal_params"]).to(device),
     }
     criterion = {
         "stft": MultiResolutionSTFTLoss(
