@@ -401,7 +401,7 @@ class Trainer(object):
             fake_loss /= (i + 1)
 
         real_loss_stft = self.criterion["mse"](p_stft, p_stft.new_ones(p_stft.size()))
-        fake_loss_stft = self.criterion["mse"](p_stft, p_stft_.new_zeros(p_stft_.size()))
+        fake_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_zeros(p_stft_.size()))
 
         real_loss = (real_loss + real_loss_stft) / 2
         fake_loss = (fake_loss + fake_loss_stft) / 2
