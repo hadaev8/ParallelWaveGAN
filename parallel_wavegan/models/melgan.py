@@ -507,8 +507,6 @@ class MelGANSpecDiscriminator(torch.nn.Module):
         for conv in self.conv_layers:
             x = conv(x)
         x = x.squeeze(1)
-        x = torch.matmul(F.softmax(self.seqpool(x), dim=-1), x.transpose(-1, -2)).squeeze(-2)
-        x = self.out(x).squeeze(-1)
         return x
 
     def apply_weight_norm(self):
@@ -530,6 +528,6 @@ class MelGANUniversalDiscriminator(torch.nn.Module):
 
     def forward(self, x):
         out_d = self.d(x)
-        out_stft = torch.stack([d(x) for d in self.d_stft], axis=0).mean(0)
+        out_stft = [d(x) for d in self.d_stft]
 
         return out_d, out_stft

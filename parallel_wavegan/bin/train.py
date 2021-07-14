@@ -217,7 +217,12 @@ class Trainer(object):
                     self.total_train_loss["train/feature_matching_loss"] += fm_loss.item()
                     adv_loss += self.config["lambda_feat_match"] * fm_loss
 
-            adv_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_ones(p_stft_.size()))
+            adv_loss_stft = 0.0
+            for i in range(len(p_stft_)):
+                adv_loss_stft += self.criterion["mse"](
+                    p_stft_[i], p_stft_[i].new_ones(p_stft_[i].size()))
+            adv_loss_stft /= (i + 1)
+
             adv_loss = (adv_loss + adv_loss_stft) / 2
             self.total_train_loss["train/adversarial_loss"] += adv_loss.item()
             # add adversarial loss to generator loss
@@ -264,8 +269,16 @@ class Trainer(object):
                 real_loss /= (i + 1)
                 fake_loss /= (i + 1)
 
-            real_loss_stft = self.criterion["mse"](p_stft, p_stft.new_ones(p_stft.size()))
-            fake_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_zeros(p_stft_.size()))
+            real_loss_stft = 0.0
+            for i in range(len(p_stft)):
+                real_loss_stft += self.criterion["mse"](
+                    p_stft[i], p_stft[i].new_ones(p_stft[i].size()))
+            real_loss_stft /= (i + 1)
+            fake_loss_stft = 0.0
+            for i in range(len(p_stft_)):
+                fake_loss_stft += self.criterion["mse"](
+                    p_stft_[i], p_stft_[i].new_zeros(p_stft_[i].size()))
+            fake_loss_stft /= (i + 1)
 
             real_loss = (real_loss + real_loss_stft) / 2
             fake_loss = (fake_loss + fake_loss_stft) / 2
@@ -373,7 +386,11 @@ class Trainer(object):
                 self.total_eval_loss["eval/feature_matching_loss"] += fm_loss.item()
                 aux_loss += self.config["lambda_adv"] * self.config["lambda_feat_match"] * fm_loss
 
-        adv_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_ones(p_stft_.size()))
+        adv_loss_stft = 0.0
+        for i in range(len(p_stft_)):
+            adv_loss_stft += self.criterion["mse"](
+                p_stft_[i], p_stft_[i].new_ones(p_stft_[i].size()))
+        adv_loss_stft /= (i + 1)
         adv_loss = (adv_loss + adv_loss_stft) / 2
         gen_loss = aux_loss + self.config["lambda_adv"] * adv_loss
 
@@ -400,8 +417,16 @@ class Trainer(object):
             real_loss /= (i + 1)
             fake_loss /= (i + 1)
 
-        real_loss_stft = self.criterion["mse"](p_stft, p_stft.new_ones(p_stft.size()))
-        fake_loss_stft = self.criterion["mse"](p_stft_, p_stft_.new_zeros(p_stft_.size()))
+        real_loss_stft = 0.0
+        for i in range(len(p_stft)):
+            real_loss_stft += self.criterion["mse"](
+                p_stft[i], p_stft[i].new_ones(p_stft[i].size()))
+        real_loss_stft /= (i + 1)
+        fake_loss_stft = 0.0
+        for i in range(len(p_stft_)):
+            fake_loss_stft += self.criterion["mse"](
+                p_stft_[i], p_stft_[i].new_zeros(p_stft_[i].size()))
+        fake_loss_stft /= (i + 1)
 
         real_loss = (real_loss + real_loss_stft) / 2
         fake_loss = (fake_loss + fake_loss_stft) / 2
